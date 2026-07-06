@@ -95,6 +95,22 @@ tbody tr:last-child td{border-bottom:none}
 .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .right{margin-left:auto}
 @media(max-width:560px){.head-inner h1{font-size:15px}.entry-row .nm{font-size:13.5px}}
+.teacher-box{display:flex;align-items:center;gap:8px}
+.teacher-box #who{font-size:12.5px;font-weight:800;color:var(--accent);white-space:nowrap;max-width:38vw;overflow:hidden;text-overflow:ellipsis}
+#gate{position:fixed;inset:0;background:linear-gradient(160deg,#eef0ff,#e6f6f4);z-index:200;display:none;align-items:center;justify-content:center;padding:18px}
+.gate-card{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 20px 60px rgba(20,24,40,.14);max-width:420px;width:100%;padding:26px 22px;text-align:center}
+.gate-logo{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#0d9488);display:grid;place-items:center;color:#fff;font-weight:800;font-size:20px;margin:0 auto 12px}
+.gate-card h1{font-size:19px;margin:0 0 6px;font-weight:800}
+.gate-sub{font-size:13px;color:var(--muted);margin:0 0 18px;line-height:1.6}
+#gate-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.gate-item{display:flex;align-items:center;gap:8px}
+.gate-pick{flex:1;text-align:left;background:var(--accent-soft);border:1px solid #d6d9f5;color:var(--accent);font-weight:800;font-size:15px;padding:13px 15px;border-radius:11px;cursor:pointer;font-family:inherit}
+.gate-pick:active{background:#e0e3ff}
+.gate-del{flex:none;color:var(--danger);font-size:12px;font-weight:700;cursor:pointer;padding:6px}
+.gate-empty{color:var(--muted);font-size:13px;padding:14px;border:1px dashed var(--line);border-radius:10px}
+.gate-add{display:flex;gap:8px}
+.gate-add input{flex:1}
+.gate-note{font-size:11px;color:var(--muted);margin:16px 0 0;line-height:1.6}
 </style>
 </head>
 <body>
@@ -104,6 +120,10 @@ tbody tr:last-child td{border-bottom:none}
     <div>
       <h1>英文成績登記系統</h1>
       <div class="sub">拍照登分 ｜ 多班級 ｜ 離線單機 ｜ 匯出 Excel</div>
+    </div>
+    <div class="right teacher-box">
+      <span id="who"></span>
+      <button class="btn ghost sm" id="switch-teacher">切換老師</button>
     </div>
   </div>
   <nav id="nav">
@@ -283,12 +303,31 @@ tbody tr:last-child td{border-bottom:none}
   </section>
 </main>
 
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-logo">EN</div>
+    <h1>英文成績登記系統</h1>
+    <p class="gate-sub">請點選你的名字，或新增一位老師。<br>每位老師的班級、學生、成績與照片都各自獨立、互不干擾。</p>
+    <div id="gate-list"></div>
+    <div class="gate-add">
+      <input type="text" id="gate-name" placeholder="輸入老師姓名，如 王老師">
+      <button class="btn primary" id="gate-add-btn">＋ 新增</button>
+    </div>
+    <p class="gate-note">資料儲存在這台裝置的瀏覽器中。同一台裝置的多位老師可在此切換，資料不會混在一起。</p>
+  </div>
+</div>
 <div id="lightbox"><span class="lb-close">✕</span><img alt=""></div>
 <div class="toast" id="toast"></div>
 
 <script>
 const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
-const KEY="en_grade_app_v1";
+const BASE_KEY="en_grade_app_v1";
+const TKEY="en_grade_teachers_v1";
+let TEACH=loadTeachers();
+function loadTeachers(){try{const r=localStorage.getItem(TKEY);if(r){const o=JSON.parse(r);if(o&&Array.isArray(o.teachers))return o;}}catch(e){}return{teachers:[],activeTeacherId:null};}
+function saveTeachers(){localStorage.setItem(TKEY,JSON.stringify(TEACH));}
+function dataKey(){return TEACH.activeTeacherId?BASE_KEY+"__"+TEACH.activeTeacherId:BASE_KEY;}
+function activeTeacher(){return TEACH.teachers.find(t=>t.id===TEACH.activeTeacherId)||null;}
 const TYPE_LABEL={quiz:"小考",exam:"段考",assign:"平時"};
 const TYPE_CLASS={quiz:"quiz",exam:"exam",assign:"assign"};
 
@@ -308,8 +347,8 @@ let idbOK=false;
 let pendingPhotos=[]; // {id,dataUrl}
 
 // ---------- state ----------
-let DB=load();
-function load(){try{const r=localStorage.getItem(KEY);if(r)return migrate(JSON.parse(r));}catch(e){}return seed();}
+let DB=null;
+function load(){try{const r=localStorage.getItem(dataKey());if(r)return migrate(JSON.parse(r));}catch(e){}return seed();}
 function migrate(o){
   if(!o)return seed();
   if(!o.classes||o.classes.length===0){const cid=uid();o.classes=[{id:cid,name:"班級 A"}];
@@ -328,7 +367,7 @@ function seed(){const cA=uid(),cB=uid();return{
   cats:[{id:uid(),name:"單字小考",type:"quiz"},{id:uid(),name:"文法小考",type:"quiz"},
         {id:uid(),name:"段考",type:"exam"},{id:uid(),name:"平時作業",type:"assign"}],
   weights:{quiz:30,exam:50,assign:20},records:[],photoSessions:[],helpers:[],lastHelperId:null};}
-function save(){localStorage.setItem(KEY,JSON.stringify(DB));}
+function save(){localStorage.setItem(dataKey(),JSON.stringify(DB));}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 function today(){return new Date().toISOString().slice(0,10);}
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),2400);}
@@ -648,11 +687,52 @@ $("#s-backup").onclick=()=>{const blob=new Blob([JSON.stringify(DB,null,2)],{typ
 $("#s-restore").onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
   rd.onload=()=>{try{const o=migrate(JSON.parse(rd.result));if(!o.students||!o.records){toast("檔案格式不符");return;}
     DB=o;save();renderClassBar();renderSetup();toast("已還原備份");}catch(err){toast("還原失敗:檔案無法解析");}};rd.readAsText(f);};
-$("#s-wipe").onclick=async()=>{if(confirm("確定清除全部資料?此動作無法復原,建議先備份。")){
-  localStorage.removeItem(KEY);if(idbOK){try{await IDB.clear();}catch(e){}}DB=seed();save();renderClassBar();renderSetup();renderEntry();toast("已清除全部資料");}};
+$("#s-wipe").onclick=async()=>{const who=activeTeacher()?activeTeacher().name:"目前老師";
+  if(confirm(`確定清除「${who}」的全部資料?此動作無法復原,建議先備份。(其他老師的資料不受影響)`)){
+  if(idbOK){try{for(const s of (DB.photoSessions||[])){for(const pid of (s.photoIds||[])){try{await IDB.del(pid);}catch(e){}}}}catch(e){}}
+  localStorage.removeItem(dataKey());DB=seed();save();renderClassBar();renderSetup();renderEntry();toast("已清除本老師的全部資料");}};
+
+// ---------- teachers / gate ----------
+function ensureLegacyMigrated(){
+  if(TEACH.teachers.length>0)return;
+  const legacy=localStorage.getItem(BASE_KEY);
+  if(legacy){const id=uid();TEACH.teachers.push({id,name:"預設老師（原有資料）"});
+    localStorage.setItem(BASE_KEY+"__"+id,legacy);localStorage.removeItem(BASE_KEY);saveTeachers();}
+}
+function renderGate(){const list=$("#gate-list");
+  list.innerHTML=TEACH.teachers.length
+    ?TEACH.teachers.map(t=>`<div class="gate-item"><button class="gate-pick" data-id="${t.id}">👤 ${t.name}</button><span class="gate-del" data-del="${t.id}">刪除</span></div>`).join("")
+    :`<div class="gate-empty">尚無老師，請在下方新增你的名字。</div>`;
+  list.querySelectorAll(".gate-pick").forEach(b=>b.onclick=()=>selectTeacher(b.dataset.id));
+  list.querySelectorAll(".gate-del").forEach(x=>x.onclick=()=>deleteTeacher(x.dataset.del));}
+function selectTeacher(id){TEACH.activeTeacherId=id;saveTeachers();$("#gate").style.display="none";bootApp();}
+function addTeacher(){const v=$("#gate-name").value.trim();if(!v)return;
+  if(TEACH.teachers.some(t=>t.name===v)){toast("已有同名老師");return;}
+  const id=uid();TEACH.teachers.push({id,name:v});saveTeachers();$("#gate-name").value="";selectTeacher(id);}
+async function deleteTeacher(id){const t=TEACH.teachers.find(x=>x.id===id);if(!t)return;
+  if(!confirm(`刪除老師「${t.name}」會一併刪除其所有班級、成績與照片，確定？`))return;
+  try{const raw=localStorage.getItem(BASE_KEY+"__"+id);
+    if(raw&&idbOK){const o=JSON.parse(raw);for(const s of (o.photoSessions||[])){for(const pid of (s.photoIds||[])){try{await IDB.del(pid);}catch(e){}}}}
+  }catch(e){}
+  localStorage.removeItem(BASE_KEY+"__"+id);
+  TEACH.teachers=TEACH.teachers.filter(x=>x.id!==id);
+  if(TEACH.activeTeacherId===id)TEACH.activeTeacherId=null;
+  saveTeachers();renderGate();}
+function bootApp(){DB=load();
+  $("#who").textContent="👤 "+(activeTeacher()?activeTeacher().name:"");
+  $$("#nav button").forEach(x=>x.classList.remove("on"));
+  document.querySelector('#nav button[data-tab="entry"]').classList.add("on");
+  ["entry","records","photos","export","setup"].forEach(t=>$("#tab-"+t).style.display=(t==="entry"?"block":"none"));
+  $("#classbar").style.display="block";
+  renderClassBar();renderEntry();}
 
 // ---------- init ----------
-renderClassBar();renderEntry();
+ensureLegacyMigrated();
+$("#gate-add-btn").onclick=addTeacher;
+$("#gate-name").addEventListener("keydown",e=>{if(e.key==="Enter")addTeacher();});
+$("#switch-teacher").onclick=()=>{saveTeachers();renderGate();$("#gate").style.display="flex";};
+if(activeTeacher()){$("#gate").style.display="none";bootApp();}
+else{renderGate();$("#gate").style.display="flex";}
 </script>
 </body>
 </html>
